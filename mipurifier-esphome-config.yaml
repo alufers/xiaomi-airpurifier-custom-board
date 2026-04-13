@@ -1,0 +1,364 @@
+esphome:
+  name: mipurifier-sypialnia
+  friendly_name: mipurifier-sypialnia
+  on_boot:
+    then:
+      - lambda: id(out_fan).set_level(0.0f);
+
+external_components:
+  - source:
+      type: git
+      url: https://github.com/lk-ek/esphome-pm1003ph
+      ref: main
+
+esp32:
+  board: esp32-c6-devkitc-1
+  framework:
+    type: esp-idf
+
+logger:
+  level: INFO
+
+prometheus:
+
+mqtt:
+  broker: !secret mqtt_host
+  username: !secret mqtt_user
+  password: !secret mqtt_password
+
+wifi:
+  id: wifi_component_id
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${name} Fallback"
+    password: !secret fallback_password
+
+ota:
+  id: my_ota
+  platform: esphome
+  password: !secret ota_password
+  on_begin:
+    then:
+      - fan.turn_off: fan_component
+
+captive_portal:
+
+web_server:
+  port: 80
+  version: 3
+  local: true
+  sorting_groups:
+    - id: sorting_group_fan
+      name: "Fan"
+      sorting_weight: 10
+    - id: sorting_group_environmental
+      name: "Environmental"
+      sorting_weight: 20
+    - id: sorting_group_radar
+      name: "LD2410 Radar"
+      sorting_weight: 30
+    - id: sorting_group_leds
+      name: "LEDs and Buttons"
+      sorting_weight: 40
+
+i2c:
+  sda: GPIO6
+  scl: GPIO7
+  scan: true
+
+uart:
+  - id: uart_ld2410
+    tx_pin: GPIO18
+    rx_pin: GPIO19
+    baud_rate: 256000
+    parity: NONE
+    stop_bits: 1
+
+tca9555:
+  - id: tca9555_hub
+    address: 0x20
+
+status_led:
+  pin:
+    tca9555: tca9555_hub
+    number: 11
+    mode: OUTPUT
+    inverted: true
+
+ld2410:
+  uart_id: uart_ld2410
+
+sensor:
+  - platform: pm1003ph
+    binary_sensor: pm1003ph_pwm_signal
+    pm_2_5:
+      name: "PM1003PH PM2.5"
+      web_server:
+        sorting_group_id: sorting_group_environmental
+  - platform: sht3xd
+    address: 0x44
+    temperature:
+      name: "Temperature"
+      web_server:
+        sorting_group_id: sorting_group_environmental
+    humidity:
+      name: "Humidity"
+      web_server:
+        sorting_group_id: sorting_group_environmental
+    update_interval: 30s
+
+  - platform: pulse_counter
+    pin: GPIO23
+    id: fan_rpm
+    name: "Fan RPM"
+    unit_of_measurement: "RPM"
+    web_server:
+      sorting_group_id: sorting_group_fan
+    accuracy_decimals: 0
+    update_interval: 2s
+    filters:
+      - multiply: 0.0625 # 16 pulses per revolution
+    on_value:
+      then:
+        - if:
+            condition:
+              and:
+                - lambda: "return !id(fan_component).state;"
+                - lambda: "return x < 50.0f;"
+            then:
+              - switch.turn_off: unbrake
+
+  - platform: ld2410
+    moving_distance:
+      name: "Radar Moving Distance"
+      web_server:
+        sorting_group_id: sorting_group_radar
+    still_distance:
+      name: "Radar Still Distance"
+      web_server:
+        sorting_group_id: sorting_group_radar
+    moving_energy:
+      name: "Radar Moving Energy"
+      web_server:
+        sorting_group_id: sorting_group_radar
+    still_energy:
+      name: "Radar Still Energy"
+      web_server:
+        sorting_group_id: sorting_group_radar
+    detection_distance:
+      name: "Radar Detection Distance"
+      web_server:
+        sorting_group_id: sorting_group_radar
+
+binary_sensor:
+  - platform: gpio
+    name: "LED Enable Button"
+    pin:
+      tca9555: tca9555_hub
+      number: 1
+      mode: INPUT
+      inverted: true
+    web_server:
+      sorting_group_id: sorting_group_leds
+    filters:
+      - delayed_on: 10ms
+      - delayed_off: 10ms
+    on_press:
+      then:
+        - logger.log: "LED Enable Button pressed"
+
+  - platform: gpio
+    name: "BT Door"
+    pin:
+      tca9555: tca9555_hub
+      number: 5
+      mode: INPUT
+      inverted: true
+    web_server:
+      sorting_group_id: sorting_group_leds
+
+  - platform: gpio
+    name: "Start Button"
+    pin:
+      tca9555: tca9555_hub
+      number: 14
+      mode: INPUT
+      inverted: true
+    web_server:
+      sorting_group_id: sorting_group_leds
+    filters:
+      - delayed_on: 10ms
+      - delayed_off: 10ms
+    on_press:
+      then:
+        - logger.log: "Start Button pressed"
+
+  - platform: gpio
+    name: "Radar Presence"
+    pin:
+      number: GPIO14
+      mode: INPUT
+    web_server:
+      sorting_group_id: sorting_group_radar
+    device_class: occupancy
+
+  - platform: ld2410
+    has_target:
+      name: "Radar Has Target"
+      web_server:
+        sorting_group_id: sorting_group_radar
+    has_moving_target:
+      name: "Radar Has Moving Target"
+      web_server:
+        sorting_group_id: sorting_group_radar
+    has_still_target:
+      name: "Radar Has Still Target"
+      web_server:
+        sorting_group_id: sorting_group_radar
+  - platform: gpio
+    pin: GPIO5
+    id: pm1003ph_pwm_signal
+    internal: true
+
+output:
+  - platform: ledc
+    id: out_fan
+    pin: GPIO20
+    frequency: 40Hz
+
+  - platform: template
+    id: fan_speed_output
+    type: float
+    write_action:
+      - number.set:
+          id: fan_frequency
+          value: !lambda return 40.0f + state * 560.0f;
+
+  - platform: gpio
+    id: out_led_bad
+    pin:
+      tca9555: tca9555_hub
+      number: 2
+      mode: OUTPUT
+      inverted: true
+
+  - platform: gpio
+    id: out_led_good
+    pin:
+      tca9555: tca9555_hub
+      number: 3
+      mode: OUTPUT
+      inverted: true
+
+  - platform: gpio
+    id: out_led_excellent
+    pin:
+      tca9555: tca9555_hub
+      number: 4
+      mode: OUTPUT
+      inverted: true
+
+  - platform: gpio
+    id: out_sleep_led
+    pin:
+      tca9555: tca9555_hub
+      number: 12
+      mode: OUTPUT
+      inverted: true
+
+  - platform: gpio
+    id: out_jet_led
+    pin:
+      tca9555: tca9555_hub
+      number: 13
+      mode: OUTPUT
+      inverted: true
+
+  - platform: gpio
+    id: out_wifi_led
+    pin:
+      tca9555: tca9555_hub
+      number: 15
+      mode: OUTPUT
+      inverted: true
+
+number:
+  - platform: template
+    name: "Fan Frequency"
+    id: fan_frequency
+    internal: true
+    min_value: 40
+    max_value: 600
+    step: 1
+    unit_of_measurement: "Hz"
+    optimistic: true
+    restore_value: true
+    on_value:
+      then:
+        - output.ledc.set_frequency:
+            id: out_fan
+            frequency: !lambda return x;
+
+fan:
+  - platform: speed
+    name: "Fan"
+    id: fan_component
+    output: fan_speed_output
+    web_server:
+      sorting_group_id: sorting_group_fan
+    on_turn_on:
+      - lambda: id(out_fan).set_level(0.5f);
+      - switch.turn_on: unbrake
+    on_turn_off:
+      - lambda: id(out_fan).set_level(0.0f);
+      # unbrake stays on until RPM drops below 50 (handled by RPM sensor on_value)
+
+switch:
+  - platform: gpio
+    name: "Unbrake"
+    id: unbrake
+    pin: GPIO21
+    internal: true
+  - platform: ld2410
+    engineering_mode:
+      name: LD2410 Engineering mode
+    bluetooth:
+      name: LD2410 Bluetooth
+
+light:
+  - platform: binary
+    name: "LED Bad"
+    output: out_led_bad
+    web_server:
+      sorting_group_id: sorting_group_leds
+
+  - platform: binary
+    name: "LED Good"
+    output: out_led_good
+    web_server:
+      sorting_group_id: sorting_group_leds
+
+  - platform: binary
+    name: "LED Excellent"
+    output: out_led_excellent
+    web_server:
+      sorting_group_id: sorting_group_leds
+
+  - platform: binary
+    name: "Sleep LED"
+    output: out_sleep_led
+    web_server:
+      sorting_group_id: sorting_group_leds
+
+  - platform: binary
+    name: "Jet LED"
+    output: out_jet_led
+    web_server:
+      sorting_group_id: sorting_group_leds
+
+  - platform: binary
+    name: "WiFi LED"
+    output: out_wifi_led
+    web_server:
+      sorting_group_id: sorting_group_leds
