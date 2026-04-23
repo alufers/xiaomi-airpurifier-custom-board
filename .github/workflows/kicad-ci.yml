@@ -116,9 +116,12 @@ jobs:
 
       - name: Generate Interactive HTML BOM
         run: |
+          IBOM_SCRIPT=$(find ibom-tool -name "generate_interactive_bom.py" | head -1)
+          echo "ibom script: $IBOM_SCRIPT"
           PCBNEW_SO=$(find /usr -name "pcbnew.so" 2>/dev/null | head -1)
+          echo "pcbnew.so: $PCBNEW_SO"
           [[ -n "$PCBNEW_SO" ]] && export PYTHONPATH="$(dirname "$PCBNEW_SO")"
-          python3 ibom-tool/generate_interactive_bom.py \
+          python3 "$IBOM_SCRIPT" \
             --no-browser \
             --dest-dir docs \
             --name-format ibom \
