@@ -29,8 +29,11 @@ jobs:
             REVISION="$SHORT_SHA"
           fi
           REPO_URL="https://github.com/${{ github.repository }}"
+          REPO_NAME="${{ github.repository }}"
+          REPO_NAME="${REPO_NAME##*/}"
           echo "revision=$REVISION"                           >> "$GITHUB_OUTPUT"
-          echo "repo_link=$REPO_URL"                         >> "$GITHUB_OUTPUT"
+          echo "repo_name=$REPO_NAME"                        >> "$GITHUB_OUTPUT"
+          echo "repo_link=${REPO_URL#https://}"               >> "$GITHUB_OUTPUT"
           echo "revision_link=$REPO_URL/commit/$SHORT_SHA"   >> "$GITHUB_OUTPUT"
 
       - name: Run DRC (errors only)
@@ -105,28 +108,40 @@ jobs:
             --output gerbers/ \
             xiaomi-airpurifier-custom-board/xiaomi-airpurifier-custom-board.kicad_pcb
 
-      - name: Package artifacts
+      - name: Generate Interactive HTML BOM
         run: |
-          REVISION="${{ steps.rev.outputs.revision }}"
-          cd gerbers && zip -r "../${REVISION}-gerbers.zip" . && cd ..
-          cd docs    && zip -r "../${REVISION}-docs.zip"    . && cd ..
+          git clone --depth 1 https://github.com/openscopeproject/InteractiveHtmlBom.git /tmp/ibom
+          KICAD_PYPATH=$(find /usr/lib/kicad -name "pcbnew*.so" 2>/dev/null | head -1 | xargs dirname)
+          PYTHONPATH="$KICAD_PYPATH" python3 /tmp/ibom/generate_interactive_bom.py \
+            --no-browser \
+            --dest-dir docs \
+            --name-format ibom \
+            xiaomi-airpurifier-custom-board/xiaomi-airpurifier-custom-board.kicad_pcb
 
       - name: Upload gerbers artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.rev.outputs.revision }}-gerbers
-          path: ${{ steps.rev.outputs.revision }}-gerbers.zip
+          name: ${{ steps.rev.outputs.repo_name }}-gerbers-${{ steps.rev.outputs.revision }}
+          path: gerbers/
 
       - name: Upload docs artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.rev.outputs.revision }}-docs
-          path: ${{ steps.rev.outputs.revision }}-docs.zip
+          name: ${{ steps.rev.outputs.repo_name }}-docs-${{ steps.rev.outputs.revision }}
+          path: docs/
+
+      - name: Package zips for release
+        if: github.event_name == 'release'
+        run: |
+          REPO_NAME="${{ steps.rev.outputs.repo_name }}"
+          REVISION="${{ steps.rev.outputs.revision }}"
+          cd gerbers && zip -r "../${REPO_NAME}-gerbers-${REVISION}.zip" . && cd ..
+          cd docs    && zip -r "../${REPO_NAME}-docs-${REVISION}.zip"    . && cd ..
 
       - name: Attach to release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ${{ steps.rev.outputs.revision }}-gerbers.zip
-            ${{ steps.rev.outputs.revision }}-docs.zip
+            ${{ steps.rev.outputs.repo_name }}-gerbers-${{ steps.rev.outputs.revision }}.zip
+            ${{ steps.rev.outputs.repo_name }}-docs-${{ steps.rev.outputs.revision }}.zip

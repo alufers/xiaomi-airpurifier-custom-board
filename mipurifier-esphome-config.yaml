@@ -12,15 +12,15 @@ globals:
   - id: mode_setting_speed
     type: bool
     restore_value: no
-    initial_value: 'false'
+    initial_value: "false"
   - id: fan_was_on
     type: bool
     restore_value: no
-    initial_value: 'false'
+    initial_value: "false"
   - id: animation_step
     type: int
     restore_value: no
-    initial_value: '0'
+    initial_value: "0"
 
 external_components:
   - source:
@@ -507,7 +507,7 @@ select:
         - if:
             condition:
               and:
-                - lambda: "return x == \"Auto\";"
+                - lambda: 'return x == "Auto";'
                 - lambda: "return id(fan_component).state;"
             then:
               - script.execute: apply_auto_speed
@@ -540,7 +540,7 @@ fan:
           id(mode_setting_speed) = false;
       - if:
           condition:
-            lambda: "return id(fan_mode)->current_option() == \"Auto\";"
+            lambda: 'return id(fan_mode)->current_option() == "Auto";'
           then:
             - script.execute: apply_auto_speed
       - script.execute: update_air_quality_leds
