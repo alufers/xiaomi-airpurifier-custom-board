@@ -17,7 +17,7 @@ jobs:
         run: |
           sudo add-apt-repository --yes ppa:kicad/kicad-10.0-releases
           sudo apt-get update
-          sudo apt-get install -y kicad xvfb
+          sudo apt-get install --no-install-recommends -y kicad xvfb
 
       - name: Compute revision info
         id: rev
@@ -67,12 +67,12 @@ jobs:
 
       - name: Export schematic PDF
         run: |
-          mkdir -p docs
+          mkdir -p "$GITHUB_WORKSPACE/docs"
           kicad-cli sch export pdf \
             -D "CI_BOARD_REPO_LINK=${{ steps.rev.outputs.repo_link }}" \
             -D "CI_BOARD_REVISION=${{ steps.rev.outputs.revision }}" \
             -D "CI_BOARD_REVISION_LINK=${{ steps.rev.outputs.revision_link }}" \
-            --output docs/schematic.pdf \
+            --output "$GITHUB_WORKSPACE/docs/schematic.pdf" \
             xiaomi-airpurifier-custom-board/xiaomi-airpurifier-custom-board.kicad_sch
 
       - name: Export BOM
@@ -82,7 +82,7 @@ jobs:
             --labels "Refs,Value,Footprint,Qty,DNP,Datasheet" \
             --group-by "Value,Footprint" \
             --sort-field "Reference" \
-            --output docs/bom.csv \
+            --output "$GITHUB_WORKSPACE/docs/bom.csv" \
             xiaomi-airpurifier-custom-board/xiaomi-airpurifier-custom-board.kicad_sch
 
       - name: Export pick and place
@@ -90,7 +90,7 @@ jobs:
           kicad-cli pcb export pos \
             --format csv \
             --units mm \
-            --output docs/pick-and-place.csv \
+            --output "$GITHUB_WORKSPACE/docs/pick-and-place.csv" \
             xiaomi-airpurifier-custom-board/xiaomi-airpurifier-custom-board.kicad_pcb
 
       - name: Export gerbers and drill files
@@ -124,7 +124,7 @@ jobs:
           fi
           xvfb-run python3 "$IBOM_SCRIPT" \
             --no-browser \
-            --dest-dir docs \
+            --dest-dir "$GITHUB_WORKSPACE/docs" \
             --name-format ibom \
             xiaomi-airpurifier-custom-board/xiaomi-airpurifier-custom-board.kicad_pcb
 
