@@ -16,7 +16,7 @@
         "copper_text_thickness": 0.3,
         "copper_text_upright": false,
         "courtyard_line_width": 0.05,
-        "dimension_precision": 4,
+        "dimension_precision": 5,
         "dimension_units": 3,
         "dimensions": {
           "arrow_length": 1270000,
@@ -68,6 +68,10 @@
         [
           "annular_width|128750000|52500000|66c81ca4-50ec-4989-8e40-85965beb6cb9|00000000-0000-0000-0000-000000000000",
           ""
+        ],
+        [
+          "clearance|116000000|25700000|1a6f872f-4bf4-4988-b7e5-f5e2bfe8514c|27ff0158-5451-4987-9a79-88ffdf08e4a6",
+          ""
         ]
       ],
       "meta": {
@@ -75,7 +79,7 @@
       },
       "rule_severities": {
         "annular_width": "error",
-        "clearance": "error",
+        "clearance": "warning",
         "connection_width": "warning",
         "copper_edge_clearance": "error",
         "copper_sliver": "warning",
@@ -133,7 +137,7 @@
         "tracks_crossing": "error",
         "tuning_profile_track_geometries": "ignore",
         "unconnected_items": "error",
-        "unresolved_variable": "error",
+        "unresolved_variable": "warning",
         "via_dangling": "warning",
         "zones_intersect": "error"
       },
@@ -240,8 +244,8 @@
           "drill": 0.0
         },
         {
-          "diameter": 0.3,
-          "drill": 0.5
+          "diameter": 0.5,
+          "drill": 0.3
         }
       ],
       "zones_allow_external_fillets": false

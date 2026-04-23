@@ -23389,7 +23389,7 @@
 		)
 	)
 	(gr_text "${CI_BOARD_REPO_LINK}"
-		(at 99 20 0)
+		(at 97.5 20 0)
 		(layer "B.SilkS")
 		(uuid "4242743e-2930-4690-805f-c36bb36f6d8c")
 		(effects
@@ -23402,7 +23402,7 @@
 		)
 	)
 	(gr_text "${CI_BOARD_REVISION}"
-		(at 99 28 0)
+		(at 97.5 28 0)
 		(layer "B.SilkS")
 		(uuid "25891121-4d52-4d3b-a878-189cf185152d")
 		(effects
