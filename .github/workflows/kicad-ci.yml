@@ -35,6 +35,7 @@ jobs:
 
       - name: Run DRC (errors only)
         run: |
+          set +e
           kicad-cli pcb drc \
             --severity-error \
             --exit-code-violations \
@@ -42,6 +43,24 @@ jobs:
             --format json \
             --output drc-report.json \
             xiaomi-airpurifier-custom-board/xiaomi-airpurifier-custom-board.kicad_pcb
+          DRC_EXIT=$?
+          set -e
+
+          if [[ -f drc-report.json ]]; then
+            VIOLATION_COUNT=$(jq '.violations | length' drc-report.json)
+            if [[ "$VIOLATION_COUNT" -gt 0 ]]; then
+              echo "::error::DRC found $VIOLATION_COUNT error(s):"
+              jq -r '.violations[] |
+                "[\(.severity | ascii_upcase)] \(.description)" +
+                if (.items | length) > 0 then
+                  "\n" + (.items | map("  → \(.description // "")") | join("\n"))
+                else "" end' drc-report.json
+            else
+              echo "DRC passed with no errors."
+            fi
+          fi
+
+          exit $DRC_EXIT
 
       - name: Export schematic PDF
         run: |
