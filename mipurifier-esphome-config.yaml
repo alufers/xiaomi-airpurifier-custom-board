@@ -2,8 +2,25 @@ esphome:
   name: mipurifier-sypialnia
   friendly_name: mipurifier-sypialnia
   on_boot:
+    priority: -100
     then:
       - lambda: id(out_fan).set_level(0.0f);
+      - script.execute: update_air_quality_leds
+      - script.execute: update_mode_leds
+
+globals:
+  - id: mode_setting_speed
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: fan_was_on
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: animation_step
+    type: int
+    restore_value: no
+    initial_value: '0'
 
 external_components:
   - source:
@@ -33,6 +50,10 @@ wifi:
   ap:
     ssid: "${name} Fallback"
     password: !secret fallback_password
+  on_connect:
+    - output.turn_on: out_wifi_led
+  on_disconnect:
+    - output.turn_off: out_wifi_led
 
 ota:
   id: my_ota
@@ -79,23 +100,114 @@ tca9555:
   - id: tca9555_hub
     address: 0x20
 
-status_led:
-  pin:
-    tca9555: tca9555_hub
-    number: 11
-    mode: OUTPUT
-    inverted: true
-
 ld2410:
   uart_id: uart_ld2410
+
+script:
+  - id: update_air_quality_leds
+    then:
+      - lambda: |
+          bool enable = id(led_enable).state && id(fan_component).state;
+          float pm25 = id(pm25_sensor).state;
+
+          std::string quality = "Unknown";
+          if (!isnan(pm25)) {
+            if (pm25 < 10.0f) quality = "Excellent";
+            else if (pm25 < 25.0f) quality = "Good";
+            else quality = "Bad";
+          }
+          id(air_quality_text).publish_state(quality);
+
+          if (enable && !isnan(pm25)) {
+            pm25 < 10.0f ? id(out_led_excellent)->turn_on() : id(out_led_excellent)->turn_off();
+            (pm25 >= 10.0f && pm25 < 25.0f) ? id(out_led_good)->turn_on() : id(out_led_good)->turn_off();
+            pm25 >= 25.0f ? id(out_led_bad)->turn_on() : id(out_led_bad)->turn_off();
+          } else {
+            id(out_led_excellent)->turn_off();
+            id(out_led_good)->turn_off();
+            id(out_led_bad)->turn_off();
+          }
+
+  - id: update_mode_leds
+    then:
+      - lambda: |
+          bool enable = id(led_enable).state && id(fan_component).state;
+          if (!enable) {
+            id(out_auto_led)->turn_off();
+            id(out_sleep_led)->turn_off();
+            id(out_manual_led)->turn_off();
+            return;
+          }
+          auto mode = id(fan_mode)->current_option();
+          if (mode == "Auto") {
+            id(out_auto_led)->turn_on();
+            id(out_sleep_led)->turn_off();
+            id(out_manual_led)->turn_off();
+          } else if (mode == "Sleep") {
+            id(out_auto_led)->turn_off();
+            id(out_sleep_led)->turn_on();
+            id(out_manual_led)->turn_off();
+          } else if (mode == "Manual") {
+            id(out_auto_led)->turn_off();
+            id(out_sleep_led)->turn_off();
+            id(out_manual_led)->turn_on();
+          }
+          // Full Speed: animation interval handles the LEDs
+
+  - id: apply_auto_speed
+    mode: restart
+    then:
+      - lambda: |
+          if (id(fan_mode)->current_option() != "Auto" || !id(fan_component).state) return;
+          float pm25 = id(pm25_sensor).state;
+          if (isnan(pm25)) pm25 = 0.0f;
+          // Map 0-50 µg/m³ PM2.5 → 16-70% fan speed, clamped
+          float pct = 16.0f + (pm25 / 50.0f) * 54.0f;
+          if (pct < 16.0f) pct = 16.0f;
+          if (pct > 70.0f) pct = 70.0f;
+          id(mode_setting_speed) = true;
+          auto call = id(fan_component).make_call();
+          call.set_speed((int)pct);
+          call.perform();
+          id(mode_setting_speed) = false;
+
+interval:
+  - interval: 300ms
+    then:
+      - lambda: |
+          bool enable = id(led_enable).state && id(fan_component).state;
+          if (id(fan_mode)->current_option() != "Full Speed" || !enable) {
+            id(animation_step) = 0;
+            return;
+          }
+          id(animation_step) = (id(animation_step) + 1) % 3;
+          if (id(animation_step) == 0) {
+            id(out_manual_led)->turn_on();
+            id(out_sleep_led)->turn_off();
+            id(out_auto_led)->turn_off();
+          } else if (id(animation_step) == 1) {
+            id(out_manual_led)->turn_off();
+            id(out_sleep_led)->turn_on();
+            id(out_auto_led)->turn_off();
+          } else {
+            id(out_manual_led)->turn_off();
+            id(out_sleep_led)->turn_off();
+            id(out_auto_led)->turn_on();
+          }
 
 sensor:
   - platform: pm1003ph
     binary_sensor: pm1003ph_pwm_signal
     pm_2_5:
+      id: pm25_sensor
       name: "PM1003PH PM2.5"
       web_server:
         sorting_group_id: sorting_group_environmental
+      on_value:
+        then:
+          - script.execute: update_air_quality_leds
+          - script.execute: apply_auto_speed
+
   - platform: sht3xd
     address: 0x44
     temperature:
@@ -151,25 +263,33 @@ sensor:
       web_server:
         sorting_group_id: sorting_group_radar
 
+text_sensor:
+  - platform: template
+    name: "Air Quality"
+    id: air_quality_text
+    web_server:
+      sorting_group_id: sorting_group_environmental
+
 binary_sensor:
   - platform: gpio
     name: "LED Enable Button"
+    id: led_enable_button
+    internal: true
     pin:
       tca9555: tca9555_hub
       number: 1
       mode: INPUT
       inverted: true
-    web_server:
-      sorting_group_id: sorting_group_leds
     filters:
       - delayed_on: 10ms
       - delayed_off: 10ms
     on_press:
       then:
-        - logger.log: "LED Enable Button pressed"
+        - switch.toggle: led_enable
 
   - platform: gpio
     name: "BT Door"
+    id: bt_door
     pin:
       tca9555: tca9555_hub
       number: 5
@@ -177,22 +297,63 @@ binary_sensor:
       inverted: true
     web_server:
       sorting_group_id: sorting_group_leds
+    filters:
+      - delayed_off: 300ms
+    on_state:
+      then:
+        - if:
+            condition:
+              binary_sensor.is_off: bt_door
+            then:
+              - fan.turn_off: fan_component
 
   - platform: gpio
     name: "Start Button"
+    id: start_button
+    internal: true
     pin:
       tca9555: tca9555_hub
       number: 14
       mode: INPUT
       inverted: true
-    web_server:
-      sorting_group_id: sorting_group_leds
     filters:
       - delayed_on: 10ms
       - delayed_off: 10ms
-    on_press:
-      then:
-        - logger.log: "Start Button pressed"
+    on_multi_click:
+      - timing:
+          - ON for at most 400ms
+          - OFF for at most 300ms
+          - ON for at most 400ms
+          - OFF for at least 50ms
+        then:
+          - if:
+              condition:
+                lambda: "return !id(fan_component).state;"
+              then:
+                - fan.turn_on: fan_component
+          - select.set:
+              id: fan_mode
+              option: "Full Speed"
+      - timing:
+          - ON for at least 1500ms
+        then:
+          - fan.turn_off: fan_component
+      - timing:
+          - ON for at most 800ms
+          - OFF for at least 350ms
+        then:
+          - if:
+              condition:
+                lambda: "return !id(fan_component).state;"
+              then:
+                - fan.turn_on: fan_component
+              else:
+                - lambda: |
+                    auto* sel = id(fan_mode);
+                    auto mode = sel->current_option();
+                    if (mode == "Full Speed" || mode == "Manual") sel->make_call().set_option("Auto").perform();
+                    else if (mode == "Auto") sel->make_call().set_option("Sleep").perform();
+                    else sel->make_call().set_option("Manual").perform();
 
   - platform: gpio
     name: "Radar Presence"
@@ -216,6 +377,7 @@ binary_sensor:
       name: "Radar Has Still Target"
       web_server:
         sorting_group_id: sorting_group_radar
+
   - platform: gpio
     pin: GPIO5
     id: pm1003ph_pwm_signal
@@ -231,9 +393,14 @@ output:
     id: fan_speed_output
     type: float
     write_action:
-      - number.set:
-          id: fan_frequency
-          value: !lambda return 40.0f + state * 560.0f;
+      - lambda: |
+          auto call = id(fan_frequency).make_call();
+          call.set_value(40.0f + state * 560.0f);
+          call.perform();
+          // Only switch to Manual when speed changes while fan was already running
+          if (!id(mode_setting_speed) && id(fan_was_on) && id(fan_component).state) {
+            id(fan_mode)->make_call().set_option("Manual").perform();
+          }
 
   - platform: gpio
     id: out_led_bad
@@ -268,10 +435,18 @@ output:
       inverted: true
 
   - platform: gpio
-    id: out_jet_led
+    id: out_manual_led
     pin:
       tca9555: tca9555_hub
       number: 13
+      mode: OUTPUT
+      inverted: true
+
+  - platform: gpio
+    id: out_auto_led
+    pin:
+      tca9555: tca9555_hub
+      number: 11
       mode: OUTPUT
       inverted: true
 
@@ -300,6 +475,44 @@ number:
             id: out_fan
             frequency: !lambda return x;
 
+select:
+  - platform: template
+    name: "Mode"
+    id: fan_mode
+    web_server:
+      sorting_group_id: sorting_group_fan
+    options:
+      - "Auto"
+      - "Sleep"
+      - "Manual"
+      - "Full Speed"
+    optimistic: true
+    restore_value: true
+    initial_option: "Auto"
+    on_value:
+      then:
+        - lambda: |
+            if (!id(fan_component).state) return;
+            id(mode_setting_speed) = true;
+            if (x == "Sleep") {
+              auto call = id(fan_component).make_call();
+              call.set_speed(11);
+              call.perform();
+            } else if (x == "Full Speed") {
+              auto call = id(fan_component).make_call();
+              call.set_speed(90);
+              call.perform();
+            }
+            id(mode_setting_speed) = false;
+        - if:
+            condition:
+              and:
+                - lambda: "return x == \"Auto\";"
+                - lambda: "return id(fan_component).state;"
+            then:
+              - script.execute: apply_auto_speed
+        - script.execute: update_mode_leds
+
 fan:
   - platform: speed
     name: "Fan"
@@ -308,57 +521,61 @@ fan:
     web_server:
       sorting_group_id: sorting_group_fan
     on_turn_on:
-      - lambda: id(out_fan).set_level(0.5f);
+      - lambda: |
+          id(out_fan).set_level(0.5f);
+          id(fan_was_on) = true;
       - switch.turn_on: unbrake
+      - lambda: |
+          id(mode_setting_speed) = true;
+          auto mode = id(fan_mode)->current_option();
+          if (mode == "Sleep") {
+            auto call = id(fan_component).make_call();
+            call.set_speed(11);
+            call.perform();
+          } else if (mode == "Full Speed") {
+            auto call = id(fan_component).make_call();
+            call.set_speed(90);
+            call.perform();
+          }
+          id(mode_setting_speed) = false;
+      - if:
+          condition:
+            lambda: "return id(fan_mode)->current_option() == \"Auto\";"
+          then:
+            - script.execute: apply_auto_speed
+      - script.execute: update_air_quality_leds
+      - script.execute: update_mode_leds
     on_turn_off:
-      - lambda: id(out_fan).set_level(0.0f);
+      - lambda: |
+          id(out_fan).set_level(0.0f);
+          id(fan_was_on) = false;
+      - script.execute: update_air_quality_leds
+      - script.execute: update_mode_leds
       # unbrake stays on until RPM drops below 50 (handled by RPM sensor on_value)
 
 switch:
+  - platform: template
+    name: "LED Enable"
+    id: led_enable
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    web_server:
+      sorting_group_id: sorting_group_leds
+    on_turn_on:
+      - script.execute: update_air_quality_leds
+      - script.execute: update_mode_leds
+    on_turn_off:
+      - script.execute: update_air_quality_leds
+      - script.execute: update_mode_leds
+
   - platform: gpio
     name: "Unbrake"
     id: unbrake
     pin: GPIO21
     internal: true
+
   - platform: ld2410
     engineering_mode:
       name: LD2410 Engineering mode
     bluetooth:
       name: LD2410 Bluetooth
-
-light:
-  - platform: binary
-    name: "LED Bad"
-    output: out_led_bad
-    web_server:
-      sorting_group_id: sorting_group_leds
-
-  - platform: binary
-    name: "LED Good"
-    output: out_led_good
-    web_server:
-      sorting_group_id: sorting_group_leds
-
-  - platform: binary
-    name: "LED Excellent"
-    output: out_led_excellent
-    web_server:
-      sorting_group_id: sorting_group_leds
-
-  - platform: binary
-    name: "Sleep LED"
-    output: out_sleep_led
-    web_server:
-      sorting_group_id: sorting_group_leds
-
-  - platform: binary
-    name: "Jet LED"
-    output: out_jet_led
-    web_server:
-      sorting_group_id: sorting_group_leds
-
-  - platform: binary
-    name: "WiFi LED"
-    output: out_wifi_led
-    web_server:
-      sorting_group_id: sorting_group_leds

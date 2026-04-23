@@ -1,0 +1,113 @@
+name: KiCad CI
+
+on:
+  push:
+  pull_request:
+  release:
+    types: [created]
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install KiCad 10
+        run: |
+          sudo add-apt-repository --yes ppa:kicad/kicad-10.0-releases
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y kicad
+
+      - name: Compute revision info
+        id: rev
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            REVISION="${{ github.ref_name }}"
+          else
+            REVISION="$SHORT_SHA"
+          fi
+          REPO_URL="https://github.com/${{ github.repository }}"
+          echo "revision=$REVISION"                           >> "$GITHUB_OUTPUT"
+          echo "repo_link=$REPO_URL"                         >> "$GITHUB_OUTPUT"
+          echo "revision_link=$REPO_URL/commit/$SHORT_SHA"   >> "$GITHUB_OUTPUT"
+
+      - name: Run DRC (errors only)
+        run: |
+          kicad-cli pcb drc \
+            --severity-error \
+            --exit-code-violations \
+            --refill-zones \
+            --format json \
+            --output drc-report.json \
+            xiaomi-airpurifier-custom-board/xiaomi-airpurifier-custom-board.kicad_pcb
+
+      - name: Export schematic PDF
+        run: |
+          mkdir -p docs
+          kicad-cli sch export pdf \
+            -D "CI_BOARD_REPO_LINK=${{ steps.rev.outputs.repo_link }}" \
+            -D "CI_BOARD_REVISION=${{ steps.rev.outputs.revision }}" \
+            -D "CI_BOARD_REVISION_LINK=${{ steps.rev.outputs.revision_link }}" \
+            --output docs/schematic.pdf \
+            xiaomi-airpurifier-custom-board/xiaomi-airpurifier-custom-board.kicad_sch
+
+      - name: Export BOM
+        run: |
+          kicad-cli sch export bom \
+            --fields "Reference,Value,Footprint,QUANTITY,DNP,Datasheet" \
+            --labels "Refs,Value,Footprint,Qty,DNP,Datasheet" \
+            --group-by "Value,Footprint" \
+            --sort-field "Reference" \
+            --output docs/bom.csv \
+            xiaomi-airpurifier-custom-board/xiaomi-airpurifier-custom-board.kicad_sch
+
+      - name: Export pick and place
+        run: |
+          kicad-cli pcb export pos \
+            --format csv \
+            --units mm \
+            --output docs/pick-and-place.csv \
+            xiaomi-airpurifier-custom-board/xiaomi-airpurifier-custom-board.kicad_pcb
+
+      - name: Export gerbers and drill files
+        run: |
+          mkdir -p gerbers
+          kicad-cli pcb export gerbers \
+            --board-plot-params \
+            -D "CI_BOARD_REPO_LINK=${{ steps.rev.outputs.repo_link }}" \
+            -D "CI_BOARD_REVISION=${{ steps.rev.outputs.revision }}" \
+            -D "CI_BOARD_REVISION_LINK=${{ steps.rev.outputs.revision_link }}" \
+            --output gerbers/ \
+            xiaomi-airpurifier-custom-board/xiaomi-airpurifier-custom-board.kicad_pcb
+          kicad-cli pcb export drill \
+            --excellon-separate-th \
+            --output gerbers/ \
+            xiaomi-airpurifier-custom-board/xiaomi-airpurifier-custom-board.kicad_pcb
+
+      - name: Package artifacts
+        run: |
+          REVISION="${{ steps.rev.outputs.revision }}"
+          cd gerbers && zip -r "../${REVISION}-gerbers.zip" . && cd ..
+          cd docs    && zip -r "../${REVISION}-docs.zip"    . && cd ..
+
+      - name: Upload gerbers artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.rev.outputs.revision }}-gerbers
+          path: ${{ steps.rev.outputs.revision }}-gerbers.zip
+
+      - name: Upload docs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.rev.outputs.revision }}-docs
+          path: ${{ steps.rev.outputs.revision }}-docs.zip
+
+      - name: Attach to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ steps.rev.outputs.revision }}-gerbers.zip
+            ${{ steps.rev.outputs.revision }}-docs.zip

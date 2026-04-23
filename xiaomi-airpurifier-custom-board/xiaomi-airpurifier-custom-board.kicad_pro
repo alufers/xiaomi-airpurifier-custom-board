@@ -554,7 +554,7 @@
       "method": 0,
       "sort_order": 0
     },
-    "bom_export_filename": "${PROJECTNAME}.csv",
+    "bom_export_filename": "Zamkonator",
     "bom_fmt_presets": [],
     "bom_fmt_settings": {
       "field_delimiter": ",",
@@ -737,16 +737,16 @@
       {
         "filename": "xiaomi-airpurifier-custom-board.kicad_sch",
         "name": "xiaomi-airpurifier-custom-board",
-        "uuid": "00000000-0000-0000-0000-000000000000"
+        "uuid": "b55cd3bb-35a4-4759-9703-be3f691b9d15"
       }
     ],
-    "used_designators": "",
+    "used_designators": "TP1-5",
     "variants": []
   },
   "sheets": [
     [
       "b55cd3bb-35a4-4759-9703-be3f691b9d15",
-      "Root"
+      "xiaomi-airpurifier-custom-board"
     ]
   ],
   "text_variables": {},
