@@ -108,12 +108,17 @@ jobs:
             --output gerbers/ \
             xiaomi-airpurifier-custom-board/xiaomi-airpurifier-custom-board.kicad_pcb
 
+      - name: Checkout InteractiveHtmlBom
+        uses: actions/checkout@v4
+        with:
+          repository: openscopeproject/InteractiveHtmlBom
+          path: ibom-tool
+
       - name: Generate Interactive HTML BOM
         run: |
-          git clone --depth 1 https://github.com/openscopeproject/InteractiveHtmlBom.git /tmp/ibom
           PCBNEW_SO=$(find /usr -name "pcbnew.so" 2>/dev/null | head -1)
           [[ -n "$PCBNEW_SO" ]] && export PYTHONPATH="$(dirname "$PCBNEW_SO")"
-          python3 /tmp/ibom/generate_interactive_bom.py \
+          python3 ibom-tool/generate_interactive_bom.py \
             --no-browser \
             --dest-dir docs \
             --name-format ibom \
