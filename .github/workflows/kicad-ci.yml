@@ -111,8 +111,9 @@ jobs:
       - name: Generate Interactive HTML BOM
         run: |
           git clone --depth 1 https://github.com/openscopeproject/InteractiveHtmlBom.git /tmp/ibom
-          KICAD_PYPATH=$(find /usr/lib/kicad -name "pcbnew*.so" 2>/dev/null | head -1 | xargs dirname)
-          PYTHONPATH="$KICAD_PYPATH" python3 /tmp/ibom/generate_interactive_bom.py \
+          PCBNEW_SO=$(find /usr -name "pcbnew.so" 2>/dev/null | head -1)
+          [[ -n "$PCBNEW_SO" ]] && export PYTHONPATH="$(dirname "$PCBNEW_SO")"
+          python3 /tmp/ibom/generate_interactive_bom.py \
             --no-browser \
             --dest-dir docs \
             --name-format ibom \
