@@ -753,7 +753,10 @@
       "xiaomi-airpurifier-custom-board"
     ]
   ],
-  "text_variables": {},
+  "text_variables": {
+    "CI_BOARD_REVISION_LINK": "https://3.example.com",
+    "MY_URL": "https://2.example.com"
+  },
   "tuning_profiles": {
     "meta": {
       "version": 0

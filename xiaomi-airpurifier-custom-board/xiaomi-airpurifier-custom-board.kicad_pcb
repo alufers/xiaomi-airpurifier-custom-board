@@ -87,6 +87,8 @@
 			(outputdirectory "xiaomi-air-purifier-gerbers-03.2026/")
 		)
 	)
+	(property "CI_BOARD_REVISION_LINK" "https://3.example.com")
+	(property "MY_URL" "https://2.example.com")
 	(footprint "Resistor_SMD:R_0603_1608Metric"
 		(layer "F.Cu")
 		(uuid "001a3ef8-2402-4c6a-99be-19046604b931")
@@ -23389,7 +23391,7 @@
 		)
 	)
 	(gr_text "${CI_BOARD_REPO_LINK}"
-		(at 97.5 20 0)
+		(at 98 20 0)
 		(layer "B.SilkS")
 		(uuid "4242743e-2930-4690-805f-c36bb36f6d8c")
 		(effects
@@ -23402,7 +23404,7 @@
 		)
 	)
 	(gr_text "${CI_BOARD_REVISION}"
-		(at 97.5 28 0)
+		(at 98 28 0)
 		(layer "B.SilkS")
 		(uuid "25891121-4d52-4d3b-a878-189cf185152d")
 		(effects
@@ -23835,10 +23837,10 @@
 		(layer "B.SilkS")
 		(size 20 20)
 		(text "${CI_BOARD_REVISION_LINK}")
-		(text_height 0.001)
+		(text_height 1)
 		(type qr)
 		(ecc_level L)
-		(hide no)
+		(hide yes)
 		(knockout no)
 		(uuid "1a6f872f-4bf4-4988-b7e5-f5e2bfe8514c")
 	)
